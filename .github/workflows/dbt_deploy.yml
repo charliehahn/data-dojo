@@ -1,0 +1,78 @@
+name: Deploy dbt to Snowflake (prod)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'models/**'
+      - 'tests/**'
+      - 'macros/**'
+      - 'seeds/**'
+      - 'snapshots/**'
+      - 'dbt_project.yml'
+      - 'packages.yml'
+      - 'profiles.yml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install dbt-snowflake snowflake-cli-labs
+
+      - name: Install dbt packages
+        run: dbt deps
+
+      - name: Configure Snowflake CLI
+        run: |
+          mkdir -p ~/.snowflake
+          echo "${{ secrets.SNOWFLAKE_PRIVATE_KEY }}" > /tmp/snowflake_rsa_key.p8
+          chmod 600 /tmp/snowflake_rsa_key.p8
+          cat > ~/.snowflake/connections.toml << 'EOF'
+          [connections.mwaa]
+          account = "ov77383.us-east-2.aws"
+          user = "MWAA_USER"
+          authenticator = "SNOWFLAKE_JWT"
+          private_key_path = "/tmp/snowflake_rsa_key.p8"
+          role = "MWAA_ROLE"
+          warehouse = "TRANSFORMING"
+          database = "ANALYTICS"
+          EOF
+
+      - name: Deploy new version to Snowflake
+        id: deploy
+        run: |
+          snow dbt deploy \
+            --connection mwaa \
+            ANALYTICS.CORE.DATA_DOJO_DBT
+
+      - name: Log deploy to Snowflake
+        if: always()
+        run: |
+          STATUS="${{ steps.deploy.outcome == 'success' && 'SUCCESS' || 'FAILED' }}"
+          snow sql \
+            --connection mwaa \
+            -q "INSERT INTO ANALYTICS_DEV.DBT_DOJO.DBT_RUN_LOG
+                  (run_id, project_name, command, status, started_at, finished_at, triggered_by)
+                VALUES (
+                  UUID_STRING(),
+                  'ANALYTICS.CORE.DATA_DOJO_DBT',
+                  'deploy',
+                  '$STATUS',
+                  CURRENT_TIMESTAMP(),
+                  CURRENT_TIMESTAMP(),
+                  'CD - merge to main (${{ github.sha }})'
+                );"

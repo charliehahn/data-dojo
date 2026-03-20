@@ -1,0 +1,121 @@
+name: dbt CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, edited]
+    paths:
+      - 'models/**'
+      - 'tests/**'
+      - 'macros/**'
+      - 'seeds/**'
+      - 'snapshots/**'
+      - 'dbt_project.yml'
+      - 'packages.yml'
+      - 'profiles.yml'
+
+jobs:
+  dbt-ci:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install dbt-snowflake snowflake-cli-labs
+
+      - name: Install dbt packages
+        run: dbt deps
+
+      - name: Configure Snowflake CLI
+        run: |
+          mkdir -p ~/.snowflake
+          echo "${{ secrets.SNOWFLAKE_PRIVATE_KEY }}" > /tmp/snowflake_rsa_key.p8
+          chmod 600 /tmp/snowflake_rsa_key.p8
+          cat > ~/.snowflake/connections.toml << 'EOF'
+          [connections.mwaa]
+          account = "ov77383.us-east-2.aws"
+          user = "MWAA_USER"
+          authenticator = "SNOWFLAKE_JWT"
+          private_key_path = "/tmp/snowflake_rsa_key.p8"
+          role = "MWAA_ROLE"
+          warehouse = "TRANSFORMING"
+          database = "ANALYTICS_DEV"
+          EOF
+
+      - name: Deploy CI dbt project
+        id: deploy
+        run: |
+          snow dbt deploy \
+            --connection mwaa \
+            ANALYTICS.CORE.DATA_DOJO_DBT_CI
+
+      - name: Run dbt build
+        id: dbt_build
+        run: |
+          snow dbt execute \
+            --connection mwaa \
+            ANALYTICS.CORE.DATA_DOJO_DBT_CI \
+            "build --target dev"
+        continue-on-error: true
+
+      - name: Log CI result to Snowflake
+        if: always()
+        run: |
+          STATUS="${{ steps.dbt_build.outcome == 'success' && 'SUCCESS' || 'FAILED' }}"
+          snow sql \
+            --connection mwaa \
+            -q "INSERT INTO ANALYTICS_DEV.DBT_DOJO.DBT_RUN_LOG
+                  (run_id, project_name, command, status, started_at, finished_at, triggered_by)
+                VALUES (
+                  UUID_STRING(),
+                  'ANALYTICS.CORE.DATA_DOJO_DBT_CI',
+                  'build --target dev',
+                  '$STATUS',
+                  CURRENT_TIMESTAMP(),
+                  CURRENT_TIMESTAMP(),
+                  'CI - PR #${{ github.event.pull_request.number }}'
+                );"
+
+      - name: Comment PR with result
+        uses: actions/github-script@v6
+        if: always()
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const outcome = '${{ steps.dbt_build.outcome }}';
+            const icon    = outcome === 'success' ? '✅' : '❌';
+            const status  = outcome === 'success' ? 'Passed' : 'Failed';
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## dbt CI ${icon} ${status}
+
+**Commit:** \`${{ github.event.pull_request.head.sha }}\`
+**Project:** \`ANALYTICS.CORE.DATA_DOJO_DBT_CI\`
+**Target:** \`ANALYTICS_DEV\` (dev schemas)
+
+View run logs → Snowsight **Monitoring → dbt Projects → DATA_DOJO_DBT_CI**
+Query logs → \`SELECT * FROM ANALYTICS_DEV.DBT_DOJO.DBT_RUN_LOG ORDER BY STARTED_AT DESC LIMIT 10;\`
+
+| | |
+|---|---|
+| PR | #${{ github.event.pull_request.number }} — ${{ github.event.pull_request.title }} |
+| Author | ${{ github.event.pull_request.user.login }} |
+| Commit | \`${{ github.event.pull_request.head.sha }}\` |
+`
+            });
+
+      - name: Fail if dbt failed
+        if: steps.dbt_build.outcome == 'failure'
+        run: exit 1
