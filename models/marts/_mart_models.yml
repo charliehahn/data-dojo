@@ -1,0 +1,25 @@
+version: 2
+
+models:
+  - name: patient_order_summary
+    description: >
+      One row per patient. Aggregates all order activity including total spend,
+      delivery rates, and average resolution time.
+    columns:
+      - name: patient_id
+        tests:
+          - unique
+          - not_null
+      - name: total_orders
+        tests:
+          - not_null
+
+  - name: product_performance
+    description: >
+      One row per product category. Summarizes order volume, revenue,
+      and delivery rates across all patients.
+    columns:
+      - name: product_category
+        tests:
+          - unique
+          - not_null

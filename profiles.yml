@@ -1,0 +1,22 @@
+data_dojo:
+  target: prod
+  outputs:
+    dev:
+      type: snowflake
+      account: ov77383.us-east-2.aws
+      user: charlie.hahn@tomorrowhealth.com
+      role: TRANSFORMER
+      authenticator: externalbrowser
+      database: ANALYTICS_DEV
+      warehouse: CHARLIE
+      schema: dbt_dojo_dev
+      threads: 4
+    prod:
+      type: snowflake
+      account: 'not needed'
+      user: 'not needed'
+      database: ANALYTICS_DEV
+      role: TRANSFORMER
+      schema: dbt_dojo
+      warehouse: TRANSFORMING
+      threads: 4

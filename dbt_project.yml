@@ -1,0 +1,36 @@
+name: 'data_dojo'
+version: '1.0.0'
+config-version: 2
+
+profile: 'data_dojo'
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+query-comment:
+  append: true
+
+models:
+  data_dojo:
+    staging:
+      +materialized: view
+      +schema: staging
+    intermediate:
+      +materialized: view
+      +schema: intermediate
+    marts:
+      +materialized: table
+      +schema: marts
+
+seeds:
+  data_dojo:
+    +schema: seeds
