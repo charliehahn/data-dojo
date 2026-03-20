@@ -27,4 +27,15 @@ summary as (
     order by total_revenue_usd desc
 )
 
-select * from summary
+final as (
+    select
+        *,
+        case
+            when total_revenue_usd >= 3000 then 'high'
+            when total_revenue_usd >= 500  then 'medium'
+            else                                'low'
+        end as revenue_tier
+    from summary
+)
+
+select * from final
