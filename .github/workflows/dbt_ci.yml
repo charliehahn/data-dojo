@@ -52,8 +52,10 @@ jobs:
         id: manifest
         run: |
           mkdir -p /tmp/prod_manifest
-          snow sql --connection mwaa \
-            -q "GET @ANALYTICS.CORE.DBT_MANIFEST_STAGE/manifest.json FILE='/tmp/prod_manifest/'" \
+          snow stage copy \
+            --connection mwaa \
+            @ANALYTICS.CORE.DBT_MANIFEST_STAGE/manifest.json \
+            /tmp/prod_manifest/ \
           && echo "manifest_found=true" >> $GITHUB_OUTPUT \
           || echo "manifest_found=false" >> $GITHUB_OUTPUT
 
@@ -71,13 +73,13 @@ jobs:
             snow dbt execute \
               --connection mwaa \
               ANALYTICS.CORE.DATA_DOJO_DBT_CI \
-              "build --select state:modified+1 --state /tmp/prod_manifest/ --target dev"
+              build --select state:modified+1 --state /tmp/prod_manifest/ --target dev
           else
             echo "No prod manifest found — running full build"
             snow dbt execute \
               --connection mwaa \
               ANALYTICS.CORE.DATA_DOJO_DBT_CI \
-              "build --target dev"
+              build --target dev
           fi
         continue-on-error: true
 
