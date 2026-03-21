@@ -45,27 +45,45 @@ jobs:
           chmod 600 /tmp/snowflake_rsa_key.p8
           printf '[connections.mwaa]\naccount = "ov77383.us-east-2.aws"\nuser = "MWAA_USER"\nauthenticator = "SNOWFLAKE_JWT"\nprivate_key_path = "/tmp/snowflake_rsa_key.p8"\nrole = "MWAA_ROLE"\nwarehouse = "TRANSFORMING"\ndatabase = "ANALYTICS_DEV"\n' > ~/.snowflake/connections.toml
 
+      - name: Download prod manifest for slim CI
+        id: manifest
+        run: |
+          mkdir -p /tmp/prod_manifest
+          snow sql --connection mwaa \
+            -q "GET @ANALYTICS.CORE.DBT_MANIFEST_STAGE/manifest.json FILE='/tmp/prod_manifest/'" \
+          && echo "manifest_found=true" >> $GITHUB_OUTPUT \
+          || echo "manifest_found=false" >> $GITHUB_OUTPUT
+
       - name: Deploy CI dbt project
-        id: deploy
         run: |
           snow dbt deploy \
             --connection mwaa \
             ANALYTICS.CORE.DATA_DOJO_DBT_CI
 
-      - name: Run dbt build
+      - name: Run dbt slim CI (modified+1)
         id: dbt_build
         run: |
-          snow dbt execute \
-            --connection mwaa \
-            ANALYTICS.CORE.DATA_DOJO_DBT_CI \
-            "build --target dev"
+          if [ "${{ steps.manifest.outputs.manifest_found }}" = "true" ]; then
+            echo "Running slim CI: state:modified+1"
+            snow dbt execute \
+              --connection mwaa \
+              ANALYTICS.CORE.DATA_DOJO_DBT_CI \
+              "build --select state:modified+1 --state /tmp/prod_manifest/ --target dev"
+          else
+            echo "No prod manifest found — running full build"
+            snow dbt execute \
+              --connection mwaa \
+              ANALYTICS.CORE.DATA_DOJO_DBT_CI \
+              "build --target dev"
+          fi
         continue-on-error: true
 
       - name: Log CI result to Snowflake
         if: always()
         run: |
           STATUS=${{ steps.dbt_build.outcome == 'success' && 'SUCCESS' || 'FAILED' }}
-          snow sql --connection mwaa -q "INSERT INTO ANALYTICS_DEV.DBT_DOJO.DBT_RUN_LOG (run_id, project_name, command, status, started_at, finished_at, triggered_by) VALUES (UUID_STRING(), 'ANALYTICS.CORE.DATA_DOJO_DBT_CI', 'build --target dev', '$STATUS', CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP(), 'CI - PR #${{ github.event.pull_request.number }}');"
+          SLIM=${{ steps.manifest.outputs.manifest_found == 'true' && 'slim CI (modified+1)' || 'full build (no manifest)' }}
+          snow sql --connection mwaa -q "INSERT INTO ANALYTICS_DEV.DBT_DOJO.DBT_RUN_LOG (run_id, project_name, command, status, started_at, finished_at, triggered_by) VALUES (UUID_STRING(), 'ANALYTICS.CORE.DATA_DOJO_DBT_CI', 'build --select state:modified+1', '$STATUS', CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP(), 'CI - PR #${{ github.event.pull_request.number }}');"
 
       - name: Comment PR with result
         uses: actions/github-script@v6
@@ -73,14 +91,16 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const outcome = '${{ steps.dbt_build.outcome }}';
-            const icon   = outcome === 'success' ? '✅' : '❌';
-            const status = outcome === 'success' ? 'Passed' : 'Failed';
+            const outcome      = '${{ steps.dbt_build.outcome }}';
+            const manifestFound = '${{ steps.manifest.outputs.manifest_found }}' === 'true';
+            const icon         = outcome === 'success' ? '✅' : '❌';
+            const status       = outcome === 'success' ? 'Passed' : 'Failed';
+            const mode         = manifestFound ? 'Slim CI (`state:modified+1`)' : 'Full build _(no prod manifest yet)_';
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `## dbt CI ${icon} ${status}\n\n**Commit:** \`${{ github.event.pull_request.head.sha }}\`\n**Project:** \`ANALYTICS.CORE.DATA_DOJO_DBT_CI\`\n\nView logs → Snowsight **Monitoring → dbt Projects → DATA_DOJO_DBT_CI**`
+              body: `## dbt CI ${icon} ${status}\n\n**Mode:** ${mode}\n**Commit:** \`${{ github.event.pull_request.head.sha }}\`\n**Project:** \`ANALYTICS.CORE.DATA_DOJO_DBT_CI\`\n\nView logs → Snowsight **Monitoring → dbt Projects → DATA_DOJO_DBT_CI**\nQuery logs → \`SELECT * FROM ANALYTICS_DEV.DBT_DOJO.DBT_RUN_LOG ORDER BY STARTED_AT DESC LIMIT 10;\``
             });
 
       - name: Fail if dbt failed

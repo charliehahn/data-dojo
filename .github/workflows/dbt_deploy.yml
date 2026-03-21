@@ -52,6 +52,13 @@ jobs:
             --connection mwaa \
             ANALYTICS.CORE.DATA_DOJO_DBT
 
+      - name: Run dbt build + upload manifest to stage
+        if: steps.deploy.outcome == 'success'
+        run: |
+          snow dbt execute --connection mwaa ANALYTICS.CORE.DATA_DOJO_DBT "build"
+          snow sql --connection mwaa \
+            -q "COPY FILES INTO @ANALYTICS.CORE.DBT_MANIFEST_STAGE/ FROM @ANALYTICS.CORE.DATA_DOJO_DBT/versions/last/target/ FILES = ('manifest.json')"
+
       - name: Log deploy to Snowflake
         if: always()
         run: |
