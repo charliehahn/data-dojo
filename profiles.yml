@@ -11,6 +11,15 @@ data_dojo:
       warehouse: CHARLIE
       schema: dbt_dojo_dev
       threads: 4
+    ci:
+      type: snowflake
+      account: 'not needed'
+      user: 'not needed'
+      database: ANALYTICS_DEV
+      role: MWAA_ROLE
+      schema: dbt_dojo_ci
+      warehouse: TRANSFORMING
+      threads: 4
     prod:
       type: snowflake
       account: 'not needed'

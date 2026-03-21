@@ -73,13 +73,13 @@ jobs:
             snow dbt execute \
               --connection mwaa \
               ANALYTICS.CORE.DATA_DOJO_DBT_CI \
-              build --select state:modified+1 --state /tmp/prod_manifest/ --target dev
+              build --select state:modified+1 --state /tmp/prod_manifest/ --target ci
           else
             echo "No prod manifest found — running full build"
             snow dbt execute \
               --connection mwaa \
               ANALYTICS.CORE.DATA_DOJO_DBT_CI \
-              build --target dev
+              build --target ci
           fi
         continue-on-error: true
 
