@@ -31,7 +31,9 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install dbt-snowflake snowflake-cli
+        run: |
+          pip install dbt-snowflake
+          pipx install snowflake-cli
 
       - name: Install dbt packages
         run: dbt deps
@@ -81,8 +83,8 @@ jobs:
       - name: Log CI result to Snowflake
         if: always()
         run: |
-          STATUS=${{ steps.dbt_build.outcome == 'success' && 'SUCCESS' || 'FAILED' }}
-          SLIM=${{ steps.manifest.outputs.manifest_found == 'true' && 'slim CI (modified+1)' || 'full build (no manifest)' }}
+          STATUS="${{ steps.dbt_build.outcome == 'success' && 'SUCCESS' || 'FAILED' }}"
+          SLIM="${{ steps.manifest.outputs.manifest_found == 'true' && 'slim CI (modified+1)' || 'full build (no manifest)' }}"
           snow sql --connection mwaa -q "INSERT INTO ANALYTICS_DEV.DBT_DOJO.DBT_RUN_LOG (run_id, project_name, command, status, started_at, finished_at, triggered_by) VALUES (UUID_STRING(), 'ANALYTICS.CORE.DATA_DOJO_DBT_CI', 'build --select state:modified+1', '$STATUS', CURRENT_TIMESTAMP(), CURRENT_TIMESTAMP(), 'CI - PR #${{ github.event.pull_request.number }}');"
 
       - name: Comment PR with result
