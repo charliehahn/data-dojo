@@ -52,12 +52,11 @@ jobs:
             --connection mwaa \
             ANALYTICS.CORE.DATA_DOJO_DBT
 
-      - name: Run dbt build + upload manifest to stage
+      - name: Upload manifest to stage for slim CI
         if: steps.deploy.outcome == 'success'
         run: |
-          snow dbt execute --connection mwaa ANALYTICS.CORE.DATA_DOJO_DBT "build"
           snow sql --connection mwaa \
-            -q "COPY FILES INTO @ANALYTICS.CORE.DBT_MANIFEST_STAGE/ FROM @ANALYTICS.CORE.DATA_DOJO_DBT/versions/last/target/ FILES = ('manifest.json')"
+            -q "PUT file://$(pwd)/target/manifest.json @ANALYTICS.CORE.DBT_MANIFEST_STAGE AUTO_COMPRESS=FALSE OVERWRITE=TRUE"
 
       - name: Log deploy to Snowflake
         if: always()
