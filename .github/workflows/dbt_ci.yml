@@ -46,6 +46,7 @@ jobs:
           echo "$SNOWFLAKE_PRIVATE_KEY" > /tmp/snowflake_rsa_key.p8
           chmod 600 /tmp/snowflake_rsa_key.p8
           printf '[connections.mwaa]\naccount = "ov77383.us-east-2.aws"\nuser = "MWAA_USER"\nauthenticator = "SNOWFLAKE_JWT"\nprivate_key_path = "/tmp/snowflake_rsa_key.p8"\nrole = "MWAA_ROLE"\nwarehouse = "TRANSFORMING"\ndatabase = "ANALYTICS_DEV"\n' > ~/.snowflake/connections.toml
+          chmod 0600 ~/.snowflake/connections.toml
 
       - name: Download prod manifest for slim CI
         id: manifest
