@@ -31,7 +31,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install dbt-snowflake snowflake-cli-labs
+        run: pip install dbt-snowflake snowflake-cli
 
       - name: Install dbt packages
         run: dbt deps
