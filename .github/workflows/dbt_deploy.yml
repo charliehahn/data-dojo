@@ -38,6 +38,9 @@ jobs:
       - name: Install dbt packages
         run: dbt deps
 
+      - name: Generate manifest (for slim CI)
+        run: dbt parse --target prod
+
       - name: Configure Snowflake CLI
         env:
           SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
