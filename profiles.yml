@@ -25,7 +25,7 @@ data_dojo:
       account: 'not needed'
       user: 'not needed'
       database: ANALYTICS_DEV
-      role: TRANSFORMER
+      role: MWAA_ROLE
       schema: dbt_dojo
       warehouse: TRANSFORMING
       threads: 4
