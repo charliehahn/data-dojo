@@ -25,7 +25,7 @@ summary as (
     from base
     group by 1
     order by total_revenue_usd desc
-)
+),
 
 final as (
     select
