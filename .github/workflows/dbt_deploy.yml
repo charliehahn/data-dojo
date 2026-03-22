@@ -31,26 +31,22 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install dbt-snowflake snowflake-cli-labs
+        run: |
+          pip install dbt-snowflake
+          pipx install snowflake-cli
 
       - name: Install dbt packages
         run: dbt deps
 
       - name: Configure Snowflake CLI
+        env:
+          SNOWFLAKE_PRIVATE_KEY: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
         run: |
           mkdir -p ~/.snowflake
-          echo "${{ secrets.SNOWFLAKE_PRIVATE_KEY }}" > /tmp/snowflake_rsa_key.p8
+          echo "$SNOWFLAKE_PRIVATE_KEY" > /tmp/snowflake_rsa_key.p8
           chmod 600 /tmp/snowflake_rsa_key.p8
-          cat > ~/.snowflake/connections.toml << 'EOF'
-          [connections.mwaa]
-          account = "ov77383.us-east-2.aws"
-          user = "MWAA_USER"
-          authenticator = "SNOWFLAKE_JWT"
-          private_key_path = "/tmp/snowflake_rsa_key.p8"
-          role = "MWAA_ROLE"
-          warehouse = "TRANSFORMING"
-          database = "ANALYTICS"
-          EOF
+          printf '[connections.mwaa]\naccount = "ov77383.us-east-2.aws"\nuser = "MWAA_USER"\nauthenticator = "SNOWFLAKE_JWT"\nprivate_key_path = "/tmp/snowflake_rsa_key.p8"\nrole = "MWAA_ROLE"\nwarehouse = "TRANSFORMING"\ndatabase = "ANALYTICS"\n' > ~/.snowflake/config.toml
+          chmod 0600 ~/.snowflake/config.toml
 
       - name: Deploy new version to Snowflake
         id: deploy
@@ -58,6 +54,12 @@ jobs:
           snow dbt deploy \
             --connection mwaa \
             ANALYTICS.CORE.DATA_DOJO_DBT
+
+      - name: Upload manifest to stage for slim CI
+        if: steps.deploy.outcome == 'success'
+        run: |
+          snow sql --connection mwaa \
+            -q "PUT file://$(pwd)/target/manifest.json @ANALYTICS.CORE.DBT_MANIFEST_STAGE AUTO_COMPRESS=FALSE OVERWRITE=TRUE"
 
       - name: Log deploy to Snowflake
         if: always()
@@ -67,7 +69,7 @@ jobs:
             --connection mwaa \
             -q "INSERT INTO ANALYTICS_DEV.DBT_DOJO.DBT_RUN_LOG
                   (run_id, project_name, command, status, started_at, finished_at, triggered_by)
-                VALUES (
+                SELECT
                   UUID_STRING(),
                   'ANALYTICS.CORE.DATA_DOJO_DBT',
                   'deploy',
