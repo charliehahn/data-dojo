@@ -80,5 +80,4 @@ jobs:
                   '$STATUS',
                   CURRENT_TIMESTAMP(),
                   CURRENT_TIMESTAMP(),
-                  'CD - merge to main (${{ github.sha }})'
-                );"
+                  'CD - merge to main (${{ github.sha }})';"
